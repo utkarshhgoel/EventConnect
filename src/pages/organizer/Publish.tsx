@@ -4,7 +4,15 @@ import { motion, AnimatePresence } from 'motion/react';
 import { ArrowRight, ArrowLeft, Plus, MapPin, Sparkles, Trash2 } from 'lucide-react';
 import { GoogleGenAI } from '@google/genai';
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
+let ai: GoogleGenAI | null = null;
+const getAI = () => {
+  if (!ai) {
+    const key = process.env.GEMINI_API_KEY;
+    if (!key) throw new Error("GEMINI_API_KEY is missing");
+    ai = new GoogleGenAI({ apiKey: key });
+  }
+  return ai;
+};
 
 export default function Publish() {
   const navigate = useNavigate();
@@ -61,7 +69,7 @@ export default function Publish() {
     
     setIsSearchingLocation(true);
     try {
-      const response = await ai.models.generateContent({
+      const response = await getAI().models.generateContent({
         model: 'gemini-2.5-flash',
         contents: `Find the exact address for: ${formData.location}`,
         config: {
@@ -99,7 +107,7 @@ export default function Publish() {
       Roles needed: ${formData.roles.map(r => r.title).join(', ')}.
       Keep it under 3 paragraphs.`;
       
-      const response = await ai.models.generateContent({
+      const response = await getAI().models.generateContent({
         model: 'gemini-2.5-flash',
         contents: prompt,
       });

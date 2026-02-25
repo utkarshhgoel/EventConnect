@@ -3,7 +3,15 @@ import { Settings, Edit3, ShieldCheck, Star, Briefcase, Mail, Phone, MapPin, Gra
 import { useState } from 'react';
 import { GoogleGenAI } from '@google/genai';
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
+let ai: GoogleGenAI | null = null;
+const getAI = () => {
+  if (!ai) {
+    const key = process.env.GEMINI_API_KEY;
+    if (!key) throw new Error("GEMINI_API_KEY is missing");
+    ai = new GoogleGenAI({ apiKey: key });
+  }
+  return ai;
+};
 
 export default function Profile() {
   const { user, logout } = useAuth();
@@ -19,7 +27,7 @@ export default function Profile() {
     try {
       const prompt = `Enhance this professional bio for an event staff candidate to make it sound more impressive and professional, but keep it concise (max 3 sentences): "${bio}"`;
       
-      const response = await ai.models.generateContent({
+      const response = await getAI().models.generateContent({
         model: 'gemini-2.5-flash',
         contents: prompt,
       });
