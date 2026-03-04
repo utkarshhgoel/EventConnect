@@ -1,15 +1,43 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { mockEvents } from '@/store/mockData';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/store/useAuth';
+import { EventPost } from '@/types';
 import { Calendar, Clock, MapPin, Users } from 'lucide-react';
 import { motion } from 'motion/react';
 import { format } from 'date-fns';
 
 export default function Posts() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'open' | 'closed'>('open');
+  const [events, setEvents] = useState<EventPost[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const filteredEvents = mockEvents.filter(e => e.status === activeTab);
+  useEffect(() => {
+    if (user) {
+      fetchEvents();
+    }
+  }, [user]);
+
+  const fetchEvents = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('events')
+        .select('*, roles:job_roles(*)')
+        .eq('organizer_id', user?.id)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setEvents(data || []);
+    } catch (error) {
+      console.error('Error fetching events:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filteredEvents = events.filter(e => e.status === activeTab);
 
   return (
     <div className="p-4 pb-24">
@@ -43,9 +71,10 @@ export default function Posts() {
           </div>
         ) : (
           filteredEvents.map((event, i) => {
-            const totalReq = event.roles.reduce((acc, r) => acc + r.reqMale + r.reqFemale, 0);
-            const totalFilled = event.roles.reduce((acc, r) => acc + r.filledMale + r.filledFemale, 0);
-            const isFull = totalReq === totalFilled;
+            const roles = event.roles || [];
+            const totalReq = roles.reduce((acc, r) => acc + r.req_male + r.req_female, 0);
+            const totalFilled = roles.reduce((acc, r) => acc + r.filled_male + r.filled_female, 0);
+            const isFull = totalReq > 0 && totalReq === totalFilled;
 
             return (
               <motion.div

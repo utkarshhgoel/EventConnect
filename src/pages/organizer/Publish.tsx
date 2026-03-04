@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { ArrowRight, ArrowLeft, Plus, MapPin, Sparkles, Trash2 } from 'lucide-react';
 import { GoogleGenAI } from '@google/genai';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/store/useAuth';
 
 let ai: GoogleGenAI | null = null;
 const getAI = () => {
@@ -122,10 +124,60 @@ export default function Publish() {
     }
   };
 
-  const publishEvent = () => {
-    // Mock publish
-    alert("Event published successfully!");
-    navigate('/organizer/posts');
+  const { user } = useAuth();
+  const [isPublishing, setIsPublishing] = useState(false);
+
+  const publishEvent = async () => {
+    if (!user) return;
+    setIsPublishing(true);
+    try {
+      // 1. Insert Event
+      const { data: eventData, error: eventError } = await supabase
+        .from('events')
+        .insert({
+          organizer_id: user.id,
+          name: formData.name,
+          start_date: formData.startDate,
+          end_date: formData.endDate,
+          start_time: formData.startTime,
+          end_time: formData.endTime,
+          working_hours: parseInt(formData.workingHours) || 0,
+          location: formData.location,
+          description: formData.description,
+          status: 'open'
+        })
+        .select()
+        .single();
+
+      if (eventError) throw eventError;
+
+      // 2. Insert Roles
+      const rolesToInsert = formData.roles.map(role => ({
+        event_id: eventData.id,
+        title: role.title,
+        dress_code: role.dressCode,
+        req_male: role.reqMale,
+        req_female: role.reqFemale,
+        budget_male: role.budgetMale,
+        budget_female: role.budgetFemale,
+        filled_male: 0,
+        filled_female: 0
+      }));
+
+      const { error: rolesError } = await supabase
+        .from('job_roles')
+        .insert(rolesToInsert);
+
+      if (rolesError) throw rolesError;
+
+      alert("Event published successfully!");
+      navigate('/organizer/posts');
+    } catch (error: any) {
+      console.error("Error publishing event:", error);
+      alert(error.message || "Failed to publish event");
+    } finally {
+      setIsPublishing(false);
+    }
   };
 
   return (

@@ -1,15 +1,73 @@
-import { useState } from 'react';
-import { mockEvents } from '@/store/mockData';
+import { useState, useEffect } from 'react';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/store/useAuth';
+import { EventPost, Application } from '@/types';
 import { Calendar, Clock, MapPin, Filter, IndianRupee } from 'lucide-react';
 import { motion } from 'motion/react';
 import { format } from 'date-fns';
 
 export default function Posts() {
+  const { user } = useAuth();
   const [filter, setFilter] = useState('all');
+  const [events, setEvents] = useState<EventPost[]>([]);
   const [appliedRoles, setAppliedRoles] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const handleApply = (roleId: string) => {
-    setAppliedRoles([...appliedRoles, roleId]);
+  useEffect(() => {
+    fetchEventsAndApplications();
+  }, [user]);
+
+  const fetchEventsAndApplications = async () => {
+    try {
+      // Fetch open events
+      const { data: eventsData, error: eventsError } = await supabase
+        .from('events')
+        .select('*, roles:job_roles(*)')
+        .eq('status', 'open')
+        .order('created_at', { ascending: false });
+
+      if (eventsError) throw eventsError;
+      setEvents(eventsData || []);
+
+      // Fetch user's applications
+      if (user) {
+        const { data: appsData, error: appsError } = await supabase
+          .from('applications')
+          .select('job_role_id')
+          .eq('candidate_id', user.id);
+
+        if (appsError) throw appsError;
+        setAppliedRoles(appsData?.map(a => a.job_role_id) || []);
+      }
+    } catch (error) {
+      console.error('Error fetching data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleApply = async (roleId: string, eventId: string) => {
+    if (!user) return;
+    
+    try {
+      const { error } = await supabase
+        .from('applications')
+        .insert({
+          event_id: eventId,
+          job_role_id: roleId,
+          candidate_id: user.id,
+          status: 'pending',
+          gender: 'male' // You might want to get this from user profile
+        });
+
+      if (error) throw error;
+      
+      setAppliedRoles([...appliedRoles, roleId]);
+      alert('Application submitted successfully!');
+    } catch (error: any) {
+      console.error('Error applying:', error);
+      alert(error.message || 'Failed to apply');
+    }
   };
 
   return (
@@ -39,7 +97,7 @@ export default function Posts() {
       </div>
 
       <div className="p-4 space-y-6">
-        {mockEvents.map((event, i) => {
+        {events.map((event, i) => {
           const isClosed = event.status === 'closed';
           
           return (
@@ -80,10 +138,10 @@ export default function Posts() {
 
               <div className="bg-gray-50 p-5 space-y-4">
                 <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">Available Roles</h3>
-                {event.roles.map(role => {
-                  const totalReq = role.reqMale + role.reqFemale;
-                  const totalFilled = role.filledMale + role.filledFemale;
-                  const isRoleFull = totalFilled >= totalReq;
+                {(event.roles || []).map(role => {
+                  const totalReq = role.req_male + role.req_female;
+                  const totalFilled = role.filled_male + role.filled_female;
+                  const isRoleFull = totalReq > 0 && totalFilled >= totalReq;
                   const isApplied = appliedRoles.includes(role.id);
                   
                   return (
@@ -98,12 +156,12 @@ export default function Posts() {
                       <div className="flex items-center justify-between mt-4">
                         <div className="flex items-center text-emerald-600 font-semibold">
                           <IndianRupee className="w-4 h-4 mr-1" />
-                          {role.budgetMale} - {role.budgetFemale} <span className="text-xs text-gray-500 font-normal ml-1">/ shift</span>
+                          {role.budget_male} - {role.budget_female} <span className="text-xs text-gray-500 font-normal ml-1">/ shift</span>
                         </div>
                         
                         <button
                           disabled={isRoleFull || isClosed || isApplied}
-                          onClick={() => handleApply(role.id)}
+                          onClick={() => handleApply(role.id, event.id)}
                           className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                             isApplied 
                               ? 'bg-gray-200 text-gray-600 cursor-not-allowed'

@@ -1,29 +1,46 @@
 import { create } from 'zustand';
+import { supabase } from '@/lib/supabase';
+import { Profile } from '@/types';
 
 type Role = 'organizer' | 'candidate' | null;
 
 interface AuthState {
-  user: { id: string; name: string; email: string; avatarUrl?: string } | null;
+  user: Profile | null;
   role: Role;
-  login: (role: Role) => void;
-  logout: () => void;
+  isLoading: boolean;
+  checkUser: () => Promise<void>;
+  logout: () => Promise<void>;
+  setUser: (user: Profile | null) => void;
 }
 
 export const useAuth = create<AuthState>((set) => ({
   user: null,
   role: null,
-  login: (role) => {
-    if (role === 'organizer') {
-      set({
-        user: { id: 'org-1', name: 'Acme Events', email: 'hello@acme.com', avatarUrl: 'https://picsum.photos/seed/org/200' },
-        role: 'organizer',
-      });
-    } else {
-      set({
-        user: { id: 'cand-1', name: 'Jane Doe', email: 'jane@example.com', avatarUrl: 'https://picsum.photos/seed/cand/200' },
-        role: 'candidate',
-      });
+  isLoading: true,
+  setUser: (user) => set({ user, role: user?.role || null }),
+  checkUser: async () => {
+    set({ isLoading: true });
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .single();
+        
+        if (profile) {
+          set({ user: profile as Profile, role: profile.role, isLoading: false });
+          return;
+        }
+      }
+    } catch (error) {
+      console.error("Error checking user:", error);
     }
+    set({ user: null, role: null, isLoading: false });
   },
-  logout: () => set({ user: null, role: null }),
+  logout: async () => {
+    await supabase.auth.signOut();
+    set({ user: null, role: null });
+  },
 }));

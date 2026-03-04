@@ -19,7 +19,7 @@ export default function Profile() {
           <div className="flex justify-between items-start">
             <div className="relative">
               <img 
-                src={user?.avatarUrl} 
+                src={user?.avatar_url} 
                 alt="Profile" 
                 className="w-24 h-24 rounded-2xl border-4 border-white shadow-sm object-cover bg-gray-100"
               />
