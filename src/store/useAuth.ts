@@ -21,12 +21,14 @@ export const useAuth = create<AuthState>((set) => ({
   checkUser: async () => {
     set({ isLoading: true });
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
+      const { data, error } = await supabase.auth.getSession();
+      if (error) throw error;
+      
+      if (data?.session?.user) {
         const { data: profile } = await supabase
           .from('profiles')
           .select('*')
-          .eq('id', session.user.id)
+          .eq('id', data.session.user.id)
           .single();
         
         if (profile) {

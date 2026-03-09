@@ -5,7 +5,13 @@ import { useAuth } from '@/store/useAuth';
 import { EventPost } from '@/types';
 import { Calendar, Clock, MapPin, Users } from 'lucide-react';
 import { motion } from 'motion/react';
-import { format } from 'date-fns';
+import { format, isValid } from 'date-fns';
+
+const safeFormatDate = (dateString: string | undefined, formatStr: string) => {
+  if (!dateString) return 'TBD';
+  const date = new Date(dateString);
+  return isValid(date) ? format(date, formatStr) : 'TBD';
+};
 
 export default function Posts() {
   const navigate = useNavigate();
@@ -99,11 +105,11 @@ export default function Posts() {
                 <div className="space-y-2 text-sm text-gray-600 mb-4">
                   <div className="flex items-center">
                     <Calendar className="w-4 h-4 mr-2 text-indigo-500" />
-                    {format(new Date(event.startDate), 'MMM d, yyyy')} - {format(new Date(event.endDate), 'MMM d, yyyy')}
+                    {safeFormatDate(event.start_date, 'MMM d, yyyy')} - {safeFormatDate(event.end_date, 'MMM d, yyyy')}
                   </div>
                   <div className="flex items-center">
                     <Clock className="w-4 h-4 mr-2 text-indigo-500" />
-                    {event.startTime} - {event.endTime} ({event.workingHours}h)
+                    {event.start_time} - {event.end_time} ({event.working_hours}h)
                   </div>
                   <div className="flex items-center">
                     <MapPin className="w-4 h-4 mr-2 text-indigo-500" />

@@ -1,9 +1,8 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/store/useAuth';
 import { supabase } from '@/lib/supabase';
 import { Briefcase, User as UserIcon } from 'lucide-react';
-import { motion } from 'motion/react';
 
 export default function Login() {
   const { setUser } = useAuth();
@@ -58,13 +57,31 @@ export default function Login() {
         if (authError) throw authError;
         
         if (authData.user) {
-          const { data: profileData, error: profileError } = await supabase
+          let { data: profileData, error: profileError } = await supabase
             .from('profiles')
             .select('*')
             .eq('id', authData.user.id)
-            .single();
+            .maybeSingle();
             
-          if (profileError) throw profileError;
+          if (!profileData) {
+            // Profile missing, create it
+            const { data: newProfile, error: insertError } = await supabase
+              .from('profiles')
+              .insert({
+                id: authData.user.id,
+                email,
+                name: email.split('@')[0], // Fallback name
+                role, // Use the selected role
+                avatar_url: `https://picsum.photos/seed/${authData.user.id}/200`
+              })
+              .select()
+              .single();
+              
+            if (insertError) throw insertError;
+            profileData = newProfile;
+          } else if (profileError) {
+            throw profileError;
+          }
           
           setUser(profileData);
           navigate(`/${profileData.role}/posts`);
@@ -79,11 +96,7 @@ export default function Login() {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 p-6">
-      <motion.div 
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 space-y-6"
-      >
+      <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 space-y-6">
         <div className="text-center">
           <h1 className="text-3xl font-bold text-gray-900 tracking-tight">EventConnect</h1>
           <p className="mt-2 text-gray-500">{isSignUp ? 'Create an account' : 'Sign in to your account'}</p>
@@ -177,7 +190,7 @@ export default function Login() {
             {isSignUp ? 'Sign In' : 'Sign Up'}
           </button>
         </div>
-      </motion.div>
+      </div>
     </div>
   );
 }

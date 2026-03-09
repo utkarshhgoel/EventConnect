@@ -4,7 +4,13 @@ import { useAuth } from '@/store/useAuth';
 import { EventPost, Application } from '@/types';
 import { Calendar, Clock, MapPin, Filter, IndianRupee } from 'lucide-react';
 import { motion } from 'motion/react';
-import { format } from 'date-fns';
+import { format, isValid, parseISO } from 'date-fns';
+
+const safeFormatDate = (dateString: string | undefined, formatStr: string) => {
+  if (!dateString) return 'TBD';
+  const date = new Date(dateString);
+  return isValid(date) ? format(date, formatStr) : 'TBD';
+};
 
 export default function Posts() {
   const { user } = useAuth();
@@ -123,11 +129,11 @@ export default function Posts() {
                 <div className="space-y-2 text-sm text-gray-600 mt-4">
                   <div className="flex items-center">
                     <Calendar className="w-4 h-4 mr-2 text-indigo-500" />
-                    {format(new Date(event.startDate), 'MMM d')} - {format(new Date(event.endDate), 'MMM d, yyyy')}
+                    {safeFormatDate(event.start_date, 'MMM d')} - {safeFormatDate(event.end_date, 'MMM d, yyyy')}
                   </div>
                   <div className="flex items-center">
                     <Clock className="w-4 h-4 mr-2 text-indigo-500" />
-                    {event.startTime} - {event.endTime}
+                    {event.start_time} - {event.end_time}
                   </div>
                   <div className="flex items-center">
                     <MapPin className="w-4 h-4 mr-2 text-indigo-500" />
@@ -149,7 +155,7 @@ export default function Posts() {
                       <div className="flex justify-between items-center mb-2">
                         <span className="font-semibold text-gray-900">{role.title}</span>
                         <span className="text-xs px-2 py-1 bg-gray-100 rounded-md text-gray-600 font-medium">
-                          {role.dressCode}
+                          {role.dress_code}
                         </span>
                       </div>
                       
