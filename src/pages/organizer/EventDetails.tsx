@@ -1,13 +1,21 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { EventPost, Application } from '@/types';
-import { ArrowLeft, Users, CheckCircle, XCircle, MessageSquare, User } from 'lucide-react';
+import { ArrowLeft, Users, CheckCircle, XCircle, MessageSquare, User, Calendar, Clock, MapPin } from 'lucide-react';
 import { useState, useEffect } from 'react';
+import { parseDescription } from '@/utils/descriptionParser';
+import { format, isValid } from 'date-fns';
+
+const safeFormatDate = (dateString: string | undefined, formatStr: string) => {
+  if (!dateString) return 'TBD';
+  const date = new Date(dateString);
+  return isValid(date) ? format(date, formatStr) : 'TBD';
+};
 
 export default function EventDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<'analytics' | 'applicants' | 'selected'>('analytics');
+  const [activeTab, setActiveTab] = useState<'overview' | 'analytics' | 'applicants' | 'selected'>('overview');
   
   const [event, setEvent] = useState<EventPost | null>(null);
   const [applicants, setApplicants] = useState<Application[]>([]);
@@ -48,6 +56,9 @@ export default function EventDetails() {
 
   const handleApplication = async (appId: string, status: 'accepted' | 'declined') => {
     try {
+      const app = applicants.find(a => a.id === appId);
+      if (!app) return;
+
       const { error } = await supabase
         .from('applications')
         .update({ status })
@@ -55,11 +66,27 @@ export default function EventDetails() {
         
       if (error) throw error;
       
+      if (status === 'accepted' && event) {
+        const role = event.roles?.find(r => r.id === app.job_role_id);
+        if (role) {
+          const isMale = app.gender === 'male';
+          const updateData = isMale 
+            ? { filled_male: role.filled_male + 1 }
+            : { filled_female: role.filled_female + 1 };
+            
+          const { error: roleError } = await supabase
+            .from('job_roles')
+            .update(updateData)
+            .eq('id', role.id);
+            
+          if (roleError) throw roleError;
+        }
+      }
+      
       // Update local state
       setApplicants(prev => prev.map(a => a.id === appId ? { ...a, status } : a));
       
-      // If accepted, we should ideally update the filled count in job_roles
-      // For this prototype, we'll just refetch the event details
+      // Refetch to get updated counts
       if (status === 'accepted') {
         fetchEventDetails();
       }
@@ -87,7 +114,7 @@ export default function EventDetails() {
       <div className="p-4">
         {/* Tabs */}
         <div className="flex space-x-2 mb-6 border-b border-gray-100 pb-2 overflow-x-auto no-scrollbar">
-          {['analytics', 'applicants', 'selected'].map((tab) => (
+          {['overview', 'analytics', 'applicants', 'selected'].map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab as any)}
@@ -99,6 +126,57 @@ export default function EventDetails() {
             </button>
           ))}
         </div>
+
+        {activeTab === 'overview' && (
+          <div className="space-y-6">
+            <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm">
+              <h3 className="font-semibold text-gray-900 mb-4">Event Details</h3>
+              <div className="space-y-3 text-sm text-gray-600">
+                <div className="flex items-center">
+                  <Calendar className="w-5 h-5 mr-3 text-indigo-500" />
+                  <span className="font-medium text-gray-900">{safeFormatDate(event.start_date, 'MMM d')} - {safeFormatDate(event.end_date, 'MMM d, yyyy')}</span>
+                </div>
+                <div className="flex items-center">
+                  <Clock className="w-5 h-5 mr-3 text-indigo-500" />
+                  <span className="font-medium text-gray-900">{event.start_time} - {event.end_time}</span>
+                  <span className="ml-2 text-gray-500">({event.working_hours} hrs total)</span>
+                </div>
+                <div className="flex items-start">
+                  <MapPin className="w-5 h-5 mr-3 text-indigo-500 mt-0.5 shrink-0" />
+                  <span className="font-medium text-gray-900 leading-snug">{event.location}</span>
+                </div>
+              </div>
+            </div>
+
+            {(() => {
+              const { text, facilities } = parseDescription(event.description);
+              return (
+                <>
+                  {text && (
+                    <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm">
+                      <h3 className="font-semibold text-gray-900 mb-3">Description</h3>
+                      <p className="text-gray-600 leading-relaxed whitespace-pre-line text-sm">{text}</p>
+                    </div>
+                  )}
+
+                  {facilities.length > 0 && (
+                    <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm">
+                      <h3 className="font-semibold text-gray-900 mb-4">Facilities Provided</h3>
+                      <div className="grid grid-cols-2 gap-y-4 gap-x-2">
+                        {facilities.map((facility, idx) => (
+                          <div key={idx} className="flex items-center text-gray-700">
+                            <CheckCircle className="w-5 h-5 mr-3 text-emerald-500 shrink-0" />
+                            <span className="text-sm font-medium">{facility}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
+          </div>
+        )}
 
         {activeTab === 'analytics' && (
           <div className="space-y-6">
@@ -121,10 +199,11 @@ export default function EventDetails() {
               {(event.roles || []).map(role => (
                 <div key={role.id} className="bg-white p-4 rounded-xl border border-gray-100">
                   <div className="flex justify-between items-center mb-3">
-                    <span className="font-medium">{role.title}</span>
-                    <span className="text-xs px-2 py-1 bg-gray-100 rounded-md text-gray-600">
-                      {role.dress_code}
-                    </span>
+                    <span className="font-medium text-lg">{role.title}</span>
+                    <div className="flex items-center space-x-1.5 bg-amber-50 text-amber-700 px-2.5 py-1 rounded-md border border-amber-200 shadow-sm">
+                      <span className="text-[10px] uppercase font-bold tracking-wider opacity-70">Dress Code:</span>
+                      <span className="text-xs font-semibold">{role.dress_code}</span>
+                    </div>
                   </div>
                   
                   <div className="grid grid-cols-2 gap-4">
@@ -214,10 +293,16 @@ export default function EventDetails() {
                     </div>
                   </div>
                   <div className="flex space-x-2">
-                    <button className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-full">
+                    <button 
+                      onClick={() => navigate(`/organizer/inbox/${app.candidate_id}`)}
+                      className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-full"
+                    >
                       <MessageSquare className="w-5 h-5" />
                     </button>
-                    <button className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-full">
+                    <button 
+                      onClick={() => navigate(`/organizer/profile/${app.candidate_id}`)}
+                      className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-full"
+                    >
                       <User className="w-5 h-5" />
                     </button>
                   </div>

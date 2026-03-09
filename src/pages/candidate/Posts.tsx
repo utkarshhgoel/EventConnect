@@ -2,9 +2,10 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/store/useAuth';
 import { EventPost, Application } from '@/types';
-import { Calendar, Clock, MapPin, Filter, IndianRupee } from 'lucide-react';
+import { Calendar, Clock, MapPin, Filter, IndianRupee, ChevronRight } from 'lucide-react';
 import { motion } from 'motion/react';
 import { format, isValid, parseISO } from 'date-fns';
+import { Link } from 'react-router-dom';
 
 const safeFormatDate = (dateString: string | undefined, formatStr: string) => {
   if (!dateString) return 'TBD';
@@ -117,29 +118,36 @@ export default function Posts() {
               }`}
             >
               <div className="p-5 border-b border-gray-50">
-                <div className="flex justify-between items-start mb-2">
-                  <h2 className="text-xl font-bold text-gray-900">{event.name}</h2>
-                  {isClosed && (
-                    <span className="px-2.5 py-1 bg-gray-200 text-gray-700 text-xs font-semibold rounded-md uppercase tracking-wider">
-                      Closed
-                    </span>
-                  )}
-                </div>
-                
-                <div className="space-y-2 text-sm text-gray-600 mt-4">
-                  <div className="flex items-center">
-                    <Calendar className="w-4 h-4 mr-2 text-indigo-500" />
-                    {safeFormatDate(event.start_date, 'MMM d')} - {safeFormatDate(event.end_date, 'MMM d, yyyy')}
+                <Link to={`/candidate/event/${event.id}`} className="block hover:bg-gray-50 -m-5 p-5 transition-colors">
+                  <div className="flex justify-between items-start mb-2">
+                    <h2 className="text-xl font-bold text-gray-900">{event.name}</h2>
+                    {isClosed && (
+                      <span className="px-2.5 py-1 bg-gray-200 text-gray-700 text-xs font-semibold rounded-md uppercase tracking-wider">
+                        Closed
+                      </span>
+                    )}
                   </div>
-                  <div className="flex items-center">
-                    <Clock className="w-4 h-4 mr-2 text-indigo-500" />
-                    {event.start_time} - {event.end_time}
+                  
+                  <div className="space-y-2 text-sm text-gray-600 mt-4">
+                    <div className="flex items-center">
+                      <Calendar className="w-4 h-4 mr-2 text-indigo-500" />
+                      {safeFormatDate(event.start_date, 'MMM d')} - {safeFormatDate(event.end_date, 'MMM d, yyyy')}
+                    </div>
+                    <div className="flex items-center">
+                      <Clock className="w-4 h-4 mr-2 text-indigo-500" />
+                      {event.start_time} - {event.end_time}
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center">
+                        <MapPin className="w-4 h-4 mr-2 text-indigo-500" />
+                        <span className="truncate">{event.location}</span>
+                      </div>
+                      <div className="flex items-center text-indigo-600 font-medium text-sm">
+                        View Details <ChevronRight className="w-4 h-4 ml-1" />
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex items-center">
-                    <MapPin className="w-4 h-4 mr-2 text-indigo-500" />
-                    <span className="truncate">{event.location}</span>
-                  </div>
-                </div>
+                </Link>
               </div>
 
               <div className="bg-gray-50 p-5 space-y-4">
@@ -153,10 +161,11 @@ export default function Posts() {
                   return (
                     <div key={role.id} className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
                       <div className="flex justify-between items-center mb-2">
-                        <span className="font-semibold text-gray-900">{role.title}</span>
-                        <span className="text-xs px-2 py-1 bg-gray-100 rounded-md text-gray-600 font-medium">
-                          {role.dress_code}
-                        </span>
+                        <span className="font-semibold text-gray-900 text-lg">{role.title}</span>
+                        <div className="flex items-center space-x-1.5 bg-amber-50 text-amber-700 px-2.5 py-1 rounded-md border border-amber-200 shadow-sm">
+                          <span className="text-[10px] uppercase font-bold tracking-wider opacity-70">Dress Code:</span>
+                          <span className="text-xs font-semibold">{role.dress_code}</span>
+                        </div>
                       </div>
                       
                       <div className="flex items-center justify-between mt-4">

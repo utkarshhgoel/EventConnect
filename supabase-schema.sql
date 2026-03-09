@@ -52,11 +52,21 @@ CREATE TABLE applications (
   UNIQUE(job_role_id, candidate_id)
 );
 
+-- Create messages table
+CREATE TABLE messages (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  sender_id UUID REFERENCES profiles(id) ON DELETE CASCADE NOT NULL,
+  receiver_id UUID REFERENCES profiles(id) ON DELETE CASCADE NOT NULL,
+  content TEXT NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
+);
+
 -- Enable Row Level Security (RLS)
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE job_roles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE applications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
 
 -- Create policies (Simplified for prototype)
 -- Profiles: Anyone can read, users can update their own
@@ -87,3 +97,7 @@ CREATE POLICY "Candidates can insert applications" ON applications FOR INSERT WI
 CREATE POLICY "Organizers can update applications for their events" ON applications FOR UPDATE USING (
   EXISTS (SELECT 1 FROM events WHERE id = applications.event_id AND organizer_id = auth.uid())
 );
+
+-- Messages: Users can read messages they sent or received, and insert messages they send
+CREATE POLICY "Users can view their messages" ON messages FOR SELECT USING (auth.uid() = sender_id OR auth.uid() = receiver_id);
+CREATE POLICY "Users can insert messages" ON messages FOR INSERT WITH CHECK (auth.uid() = sender_id);

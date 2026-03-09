@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { Search } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 export default function Inbox() {
   const [searchQuery, setSearchQuery] = useState('');
+  const navigate = useNavigate();
 
   // Mock chats
   const chats = [
@@ -28,7 +30,11 @@ export default function Inbox() {
 
       <div className="divide-y divide-gray-50">
         {chats.map(chat => (
-          <div key={chat.id} className="p-4 flex items-center hover:bg-gray-50 cursor-pointer transition-colors">
+          <div 
+            key={chat.id} 
+            onClick={() => navigate(`/candidate/inbox/${chat.id}`)}
+            className="p-4 flex items-center hover:bg-gray-50 cursor-pointer transition-colors"
+          >
             <div className="relative">
               <img 
                 src={`https://picsum.photos/seed/org${chat.id}/100`} 

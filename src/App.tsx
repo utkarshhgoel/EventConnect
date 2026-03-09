@@ -57,6 +57,8 @@ import CandPosts from './pages/candidate/Posts';
 import CandApplications from './pages/candidate/Applications';
 import CandInbox from './pages/candidate/Inbox';
 import CandProfile from './pages/candidate/Profile';
+import CandEventDetails from './pages/candidate/EventDetails';
+import Chat from './pages/Chat';
 
 export default function App() {
   const { checkUser, isLoading } = useAuth();
@@ -118,12 +120,16 @@ export default function App() {
             <Route path="/organizer/posts/:id" element={<OrgEventDetails />} />
             <Route path="/organizer/publish" element={<OrgPublish />} />
             <Route path="/organizer/inbox" element={<OrgInbox />} />
+            <Route path="/organizer/inbox/:id" element={<Chat />} />
             <Route path="/organizer/profile" element={<OrgProfile />} />
+            <Route path="/organizer/profile/:id" element={<CandProfile />} />
             
             {/* Candidate Routes */}
             <Route path="/candidate/posts" element={<CandPosts />} />
+            <Route path="/candidate/event/:id" element={<CandEventDetails />} />
             <Route path="/candidate/applications" element={<CandApplications />} />
             <Route path="/candidate/inbox" element={<CandInbox />} />
+            <Route path="/candidate/inbox/:id" element={<Chat />} />
             <Route path="/candidate/profile" element={<CandProfile />} />
           </Route>
 
