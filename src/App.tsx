@@ -4,10 +4,36 @@ import { AppLayout } from './components/layout/AppLayout';
 import { useAuth } from './store/useAuth';
 import Login from './pages/Login';
 
-class ErrorBoundary extends Component<{children: ReactNode}, {hasError: boolean, error: Error | null}> {
-  constructor(props: {children: ReactNode}) {
+// Organizer Pages
+import OrgPosts from './pages/organizer/Posts';
+import OrgPublish from './pages/organizer/Publish';
+import OrgInbox from './pages/organizer/Inbox';
+import OrgProfile from './pages/organizer/Profile';
+import OrgEventDetails from './pages/organizer/EventDetails';
+import OrgReview from './pages/organizer/Review';
+
+// Candidate Pages
+import CandPosts from './pages/candidate/Posts';
+import CandApplications from './pages/candidate/Applications';
+import CandInbox from './pages/candidate/Inbox';
+import CandProfile from './pages/candidate/Profile';
+import CandEventDetails from './pages/candidate/EventDetails';
+import Chat from './pages/Chat';
+
+interface ErrorBoundaryProps {
+  children: ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  state: ErrorBoundaryState = { hasError: false, error: null };
+
+  constructor(props: ErrorBoundaryProps) {
     super(props);
-    this.state = { hasError: false, error: null };
   }
 
   static getDerivedStateFromError(error: Error) {
@@ -41,24 +67,9 @@ class ErrorBoundary extends Component<{children: ReactNode}, {hasError: boolean,
       );
     }
 
-    return this.props.children;
+    return (this as any).props.children;
   }
 }
-
-// Organizer Pages
-import OrgPosts from './pages/organizer/Posts';
-import OrgPublish from './pages/organizer/Publish';
-import OrgInbox from './pages/organizer/Inbox';
-import OrgProfile from './pages/organizer/Profile';
-import OrgEventDetails from './pages/organizer/EventDetails';
-
-// Candidate Pages
-import CandPosts from './pages/candidate/Posts';
-import CandApplications from './pages/candidate/Applications';
-import CandInbox from './pages/candidate/Inbox';
-import CandProfile from './pages/candidate/Profile';
-import CandEventDetails from './pages/candidate/EventDetails';
-import Chat from './pages/Chat';
 
 export default function App() {
   const { checkUser, isLoading } = useAuth();
@@ -123,6 +134,7 @@ export default function App() {
             <Route path="/organizer/inbox/:id" element={<Chat />} />
             <Route path="/organizer/profile" element={<OrgProfile />} />
             <Route path="/organizer/profile/:id" element={<CandProfile />} />
+            <Route path="/organizer/review/:id" element={<OrgReview />} />
             
             {/* Candidate Routes */}
             <Route path="/candidate/posts" element={<CandPosts />} />

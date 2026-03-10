@@ -1,7 +1,7 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { EventPost, Application } from '@/types';
-import { ArrowLeft, Users, CheckCircle, XCircle, MessageSquare, User, Calendar, Clock, MapPin } from 'lucide-react';
+import { ArrowLeft, Users, CheckCircle, XCircle, MessageSquare, User, Calendar, Clock, MapPin, AlertTriangle } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { parseDescription } from '@/utils/descriptionParser';
 import { format, isValid } from 'date-fns';
@@ -20,6 +20,7 @@ export default function EventDetails() {
   const [event, setEvent] = useState<EventPost | null>(null);
   const [applicants, setApplicants] = useState<Application[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showEndModal, setShowEndModal] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -93,6 +94,40 @@ export default function EventDetails() {
     } catch (error) {
       console.error('Error updating application:', error);
       alert('Failed to update application');
+    }
+  };
+
+  const handleCancelEvent = async () => {
+    if (!event) return;
+    try {
+      // Delete the event to make it disappear from everywhere
+      const { error } = await supabase
+        .from('events')
+        .delete()
+        .eq('id', event.id);
+        
+      if (error) throw error;
+      navigate('/organizer/posts');
+    } catch (error) {
+      console.error('Error cancelling event:', error);
+      alert('Failed to cancel event');
+    }
+  };
+
+  const handleFinishAndReview = async () => {
+    if (!event) return;
+    try {
+      // Update status to closed
+      const { error } = await supabase
+        .from('events')
+        .update({ status: 'closed' })
+        .eq('id', event.id);
+        
+      if (error) throw error;
+      navigate(`/organizer/review/${event.id}`);
+    } catch (error) {
+      console.error('Error finishing event:', error);
+      alert('Failed to finish event');
     }
   };
 
@@ -175,6 +210,15 @@ export default function EventDetails() {
                 </>
               );
             })()}
+            
+            {event.status === 'open' && (
+              <button 
+                onClick={() => setShowEndModal(true)}
+                className="w-full py-3.5 bg-red-50 text-red-600 border border-red-200 rounded-xl font-semibold mt-6 hover:bg-red-100 transition-colors"
+              >
+                End Event
+              </button>
+            )}
           </div>
         )}
 
@@ -233,8 +277,11 @@ export default function EventDetails() {
             </div>
             
             {event.status === 'closed' && (
-              <button className="w-full py-3 bg-gray-900 text-white rounded-xl font-medium mt-4">
-                End Event & Review Candidates
+              <button 
+                onClick={() => navigate(`/organizer/review/${event.id}`)}
+                className="w-full py-3 bg-gray-900 text-white rounded-xl font-medium mt-4"
+              >
+                Review Candidates
               </button>
             )}
           </div>
@@ -312,6 +359,44 @@ export default function EventDetails() {
           </div>
         )}
       </div>
+
+      {/* End Event Modal */}
+      {showEndModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-xl animate-in fade-in zoom-in duration-200">
+            <div className="p-6 text-center">
+              <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                <AlertTriangle className="w-8 h-8" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">End Event</h3>
+              <p className="text-gray-500 text-sm mb-6">
+                Are you sure you want to end this event? You can either cancel it completely or finish it to review your candidates.
+              </p>
+              
+              <div className="space-y-3">
+                <button 
+                  onClick={handleFinishAndReview}
+                  className="w-full py-3 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition-colors"
+                >
+                  Finish & Review Candidates
+                </button>
+                <button 
+                  onClick={handleCancelEvent}
+                  className="w-full py-3 bg-red-50 text-red-600 rounded-xl font-semibold hover:bg-red-100 transition-colors"
+                >
+                  Cancel Event
+                </button>
+                <button 
+                  onClick={() => setShowEndModal(false)}
+                  className="w-full py-3 bg-gray-100 text-gray-700 rounded-xl font-semibold hover:bg-gray-200 transition-colors"
+                >
+                  Go Back
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

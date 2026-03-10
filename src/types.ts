@@ -5,6 +5,12 @@ export interface Profile {
   email: string;
   avatar_url?: string;
   bio?: string;
+  phone?: string;
+  location?: string;
+  subtitle?: string;
+  is_verified?: boolean;
+  verification_status?: 'unverified' | 'pending' | 'verified';
+  id_proof_url?: string;
 }
 
 export interface JobRole {
