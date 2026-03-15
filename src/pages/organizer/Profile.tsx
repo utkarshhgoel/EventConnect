@@ -8,6 +8,7 @@ import imageCompression from 'browser-image-compression';
 export default function Profile() {
   const { user, logout, checkUser } = useAuth();
   const [publishedEvents, setPublishedEvents] = useState<EventPost[]>([]);
+  const [reviews, setReviews] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
   // Edit Profile State
@@ -33,15 +34,16 @@ export default function Profile() {
   const [submittingVerification, setSubmittingVerification] = useState(false);
 
   const getParsedSubtitle = (subtitleStr: string | undefined) => {
-    if (!subtitleStr) return { roles: 'Event Organizer' };
+    if (!subtitleStr) return { roles: 'Event Organizer', photos: [] };
     try {
       const parsed = JSON.parse(subtitleStr);
       return {
         roles: parsed.roles || 'Event Organizer',
-        gender: parsed.gender
+        gender: parsed.gender,
+        photos: parsed.photos || []
       };
     } catch (e) {
-      return { roles: subtitleStr };
+      return { roles: subtitleStr, photos: [] };
     }
   };
 
@@ -101,10 +103,114 @@ export default function Profile() {
 
       if (error) throw error;
       setPublishedEvents(data || []);
+
+      // Fetch reviews received by this organizer
+      const { data: reviewsData, error: reviewsError } = await supabase
+        .from('reviews')
+        .select('*')
+        .eq('organizer_id', user?.id);
+        
+      if (reviewsError) {
+        console.error('Error fetching reviews:', reviewsError);
+      } else {
+        setReviews(reviewsData || []);
+      }
     } catch (error) {
-      console.error('Error fetching published events:', error);
+      console.error('Error fetching data:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const [uploadingPhotoIndex, setUploadingPhotoIndex] = useState<number | null>(null);
+
+  const handlePhotoUpload = async (index: number, event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !user) return;
+
+    setUploadingPhotoIndex(index);
+    try {
+      let fileToUpload = file;
+      try {
+        const options = {
+          maxSizeMB: 0.5,
+          maxWidthOrHeight: 1080,
+          useWebWorker: true
+        };
+        fileToUpload = await imageCompression(file, options);
+      } catch (error) {
+        console.error('Error compressing image:', error);
+      }
+
+      const fileExt = fileToUpload.name.split('.').pop() || 'jpg';
+      const fileName = `${user.id}-photo-${index}-${Math.random()}.${fileExt}`;
+      const filePath = `avatars/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, fileToUpload);
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(filePath);
+
+      const parsedDetails = getParsedSubtitle(user.subtitle);
+      const currentPhotos = [...(parsedDetails.photos || [])];
+      
+      while (currentPhotos.length <= index) {
+        currentPhotos.push('');
+      }
+      currentPhotos[index] = publicUrl;
+
+      const newSubtitle = JSON.stringify({
+        ...parsedDetails,
+        photos: currentPhotos
+      });
+
+      const { error } = await supabase
+        .from('profiles')
+        .update({ subtitle: newSubtitle })
+        .eq('id', user.id);
+
+      if (error) throw error;
+      
+      await checkUser();
+    } catch (error: any) {
+      console.error('Error uploading photo:', error);
+      alert(`Failed to upload photo: ${error.message || 'Unknown error'}`);
+    } finally {
+      setUploadingPhotoIndex(null);
+    }
+  };
+
+  const handlePhotoDelete = async (index: number) => {
+    if (!user) return;
+    try {
+      const parsedDetails = getParsedSubtitle(user.subtitle);
+      const currentPhotos = [...(parsedDetails.photos || [])];
+      
+      if (index < currentPhotos.length) {
+        currentPhotos[index] = '';
+      }
+
+      const newSubtitle = JSON.stringify({
+        ...parsedDetails,
+        photos: currentPhotos
+      });
+
+      const { error } = await supabase
+        .from('profiles')
+        .update({ subtitle: newSubtitle })
+        .eq('id', user.id);
+
+      if (error) throw error;
+      
+      await checkUser();
+    } catch (error: any) {
+      console.error('Error deleting photo:', error);
+      alert(`Failed to delete photo: ${error.message || 'Unknown error'}`);
     }
   };
 
@@ -148,9 +254,11 @@ export default function Profile() {
         avatarUrl = publicUrl;
       }
 
+      const parsedDetails = getParsedSubtitle(user.subtitle);
       const newSubtitle = JSON.stringify({
         roles: editForm.subtitle,
-        gender: editForm.gender
+        gender: editForm.gender,
+        photos: parsedDetails.photos || []
       });
 
       let { error } = await supabase
@@ -317,10 +425,12 @@ export default function Profile() {
 
           <div className="flex items-center space-x-4 mt-4 pt-4 border-t border-gray-100">
             <div className="flex flex-col">
-              <span className="text-2xl font-bold text-gray-900">4.9</span>
+              <span className="text-2xl font-bold text-gray-900">
+                {reviews.length > 0 ? (reviews.reduce((acc, curr) => acc + curr.rating, 0) / reviews.length).toFixed(1) : '0.0'}
+              </span>
               <div className="flex items-center text-xs text-gray-500 mt-0.5">
                 <Star className="w-3 h-3 text-amber-400 fill-amber-400 mr-1" />
-                120 Reviews
+                {reviews.length} Reviews
               </div>
             </div>
             <div className="w-px h-10 bg-gray-200"></div>
@@ -383,6 +493,46 @@ export default function Profile() {
           <div className="flex items-center text-sm text-gray-600">
             <MapPin className="w-4 h-4 mr-3 text-gray-400" />
             {user?.location || 'Not provided'}
+          </div>
+        </div>
+
+        {/* Photos */}
+        <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 space-y-4">
+          <h3 className="font-semibold text-gray-900 mb-4">Photos</h3>
+          <div className="grid grid-cols-3 gap-2">
+            {[0, 1, 2, 3, 4, 5].map((index) => {
+              const photoUrl = getParsedSubtitle(user?.subtitle).photos?.[index];
+              return (
+                <div key={index} className="aspect-square rounded-xl bg-gray-100 border-2 border-dashed border-gray-200 relative overflow-hidden group">
+                  {photoUrl ? (
+                    <>
+                      <img src={photoUrl} alt={`Photo ${index + 1}`} className="w-full h-full object-cover" />
+                      <button
+                        onClick={() => handlePhotoDelete(index)}
+                        className="absolute top-1 right-1 p-1 bg-black/50 hover:bg-black/70 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </>
+                  ) : (
+                    <label className="w-full h-full flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 transition-colors">
+                      {uploadingPhotoIndex === index ? (
+                        <div className="w-5 h-5 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+                      ) : (
+                        <Upload className="w-5 h-5 text-gray-400" />
+                      )}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => handlePhotoUpload(index, e)}
+                        disabled={uploadingPhotoIndex !== null}
+                      />
+                    </label>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
 
