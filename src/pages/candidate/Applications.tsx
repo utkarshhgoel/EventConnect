@@ -35,7 +35,10 @@ export default function Applications() {
         .order('applied_at', { ascending: false });
 
       if (error) throw error;
-      setApplications(data || []);
+      
+      // Filter out applications where the event is closed
+      const activeApps = (data || []).filter(app => app.event?.status === 'open');
+      setApplications(activeApps);
     } catch (error) {
       console.error('Error fetching applications:', error);
     } finally {

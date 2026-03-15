@@ -12,6 +12,7 @@ CREATE TABLE profiles (
   is_verified BOOLEAN DEFAULT false,
   verification_status TEXT DEFAULT 'unverified' CHECK (verification_status IN ('unverified', 'pending', 'verified')),
   id_proof_url TEXT,
+  gender TEXT CHECK (gender IN ('male', 'female')),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 
@@ -126,3 +127,18 @@ CREATE POLICY "Users can insert messages" ON messages FOR INSERT WITH CHECK (aut
 -- Reviews: Anyone can read, Organizers can insert for their events
 CREATE POLICY "Reviews are viewable by everyone" ON reviews FOR SELECT USING (true);
 CREATE POLICY "Organizers can insert reviews" ON reviews FOR INSERT WITH CHECK (auth.uid() = organizer_id);
+
+-- Create storage buckets
+INSERT INTO storage.buckets (id, name, public) VALUES ('verifications', 'verifications', true) ON CONFLICT DO NOTHING;
+INSERT INTO storage.buckets (id, name, public) VALUES ('avatars', 'avatars', true) ON CONFLICT DO NOTHING;
+
+-- Storage Policies for verifications
+CREATE POLICY "Public View" ON storage.objects FOR SELECT USING (bucket_id = 'verifications');
+CREATE POLICY "Auth Upload" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'verifications' AND auth.role() = 'authenticated');
+CREATE POLICY "Auth Delete" ON storage.objects FOR DELETE USING (bucket_id = 'verifications' AND auth.uid() = owner);
+
+-- Storage Policies for avatars
+CREATE POLICY "Avatar Public View" ON storage.objects FOR SELECT USING (bucket_id = 'avatars');
+CREATE POLICY "Avatar Auth Upload" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'avatars' AND auth.role() = 'authenticated');
+CREATE POLICY "Avatar Auth Delete" ON storage.objects FOR DELETE USING (bucket_id = 'avatars' AND auth.uid() = owner);
+CREATE POLICY "Avatar Auth Update" ON storage.objects FOR UPDATE USING (bucket_id = 'avatars' AND auth.uid() = owner);

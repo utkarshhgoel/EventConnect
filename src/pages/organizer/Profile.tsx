@@ -18,8 +18,10 @@ export default function Profile() {
     bio: '',
     phone: '',
     location: '',
-    avatar_url: ''
+    avatar_url: '',
+    gender: 'male' as 'male' | 'female'
   });
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
 
   // Verification State
@@ -30,16 +32,31 @@ export default function Profile() {
   const [idProofFile, setIdProofFile] = useState<File | null>(null);
   const [submittingVerification, setSubmittingVerification] = useState(false);
 
+  const getParsedSubtitle = (subtitleStr: string | undefined) => {
+    if (!subtitleStr) return { roles: 'Event Organizer' };
+    try {
+      const parsed = JSON.parse(subtitleStr);
+      return {
+        roles: parsed.roles || 'Event Organizer',
+        gender: parsed.gender
+      };
+    } catch (e) {
+      return { roles: subtitleStr };
+    }
+  };
+
   useEffect(() => {
     if (user?.id) {
       fetchPublishedEvents();
+      const parsedDetails = getParsedSubtitle(user.subtitle);
       setEditForm({
         name: user.name || '',
-        subtitle: user.subtitle || '',
+        subtitle: parsedDetails.roles,
         bio: user.bio || '',
         phone: user.phone || '',
         location: user.location || '',
-        avatar_url: user.avatar_url || ''
+        avatar_url: user.avatar_url || '',
+        gender: user.gender || parsedDetails.gender || 'male'
       });
       setVerifyForm({
         phone: user.phone || ''
@@ -95,25 +112,84 @@ export default function Profile() {
     if (!user) return;
     setSaving(true);
     try {
-      const { error } = await supabase
+      let avatarUrl = editForm.avatar_url;
+
+      if (avatarFile) {
+        // Compress image
+        let fileToUpload = avatarFile;
+        try {
+          const options = {
+            maxSizeMB: 0.5,
+            maxWidthOrHeight: 800,
+            useWebWorker: true
+          };
+          fileToUpload = await imageCompression(avatarFile, options);
+        } catch (error) {
+          console.error('Error compressing image:', error);
+        }
+
+        const fileExt = fileToUpload.name.split('.').pop() || 'jpg';
+        const fileName = `${user.id}-${Math.random()}.${fileExt}`;
+        const filePath = `avatars/${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('avatars')
+          .upload(filePath, fileToUpload);
+
+        if (uploadError) {
+          console.error('Upload error details:', uploadError);
+          throw uploadError;
+        }
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('avatars')
+          .getPublicUrl(filePath);
+
+        avatarUrl = publicUrl;
+      }
+
+      const newSubtitle = JSON.stringify({
+        roles: editForm.subtitle,
+        gender: editForm.gender
+      });
+
+      let { error } = await supabase
         .from('profiles')
         .update({
           name: editForm.name,
-          subtitle: editForm.subtitle,
+          subtitle: newSubtitle,
           bio: editForm.bio,
           phone: editForm.phone,
           location: editForm.location,
-          avatar_url: editForm.avatar_url
+          avatar_url: avatarUrl,
+          gender: editForm.gender
         })
         .eq('id', user.id);
+
+      // Fallback if gender column doesn't exist in DB yet
+      if (error && error.message?.includes('Could not find the \'gender\' column')) {
+        const { error: retryError } = await supabase
+          .from('profiles')
+          .update({
+            name: editForm.name,
+            subtitle: newSubtitle,
+            bio: editForm.bio,
+            phone: editForm.phone,
+            location: editForm.location,
+            avatar_url: avatarUrl
+          })
+          .eq('id', user.id);
+        error = retryError;
+      }
 
       if (error) throw error;
       
       await checkUser(); // Refresh user data
       setIsEditing(false);
-    } catch (error) {
+      setAvatarFile(null);
+    } catch (error: any) {
       console.error('Error updating profile:', error);
-      alert('Failed to update profile');
+      alert(`Failed to update profile: ${error.message || 'Unknown error'}`);
     } finally {
       setSaving(false);
     }
@@ -236,7 +312,7 @@ export default function Profile() {
 
           <div className="mt-4">
             <h1 className="text-2xl font-bold text-gray-900">{user?.name}</h1>
-            <p className="text-gray-500 text-sm mt-1">{user?.subtitle || 'Event Organizer'}</p>
+            <p className="text-gray-500 text-sm mt-1">{getParsedSubtitle(user?.subtitle).roles}</p>
           </div>
 
           <div className="flex items-center space-x-4 mt-4 pt-4 border-t border-gray-100">
@@ -322,7 +398,7 @@ export default function Profile() {
               {publishedEvents.map((event) => (
                 <div key={event.id} className="border-b border-gray-100 last:border-0 pb-4 last:pb-0">
                   <div className="flex justify-between items-start mb-2">
-                    <h4 className="font-medium text-gray-900">{event.title}</h4>
+                    <h4 className="font-medium text-gray-900">{event.name}</h4>
                     <div className="flex items-center bg-emerald-50 px-2 py-1 rounded-md">
                       <CheckCircle className="w-3.5 h-3.5 text-emerald-500 mr-1" />
                       <span className="text-xs font-bold text-emerald-700">Completed</span>
@@ -389,14 +465,60 @@ export default function Profile() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Avatar URL</label>
-                <input 
-                  type="url" 
-                  value={editForm.avatar_url}
-                  onChange={(e) => setEditForm({...editForm, avatar_url: e.target.value})}
-                  placeholder="https://example.com/avatar.jpg"
+                <label className="block text-sm font-medium text-gray-700 mb-1">Bio</label>
+                <textarea 
+                  value={editForm.bio}
+                  onChange={(e) => setEditForm({...editForm, bio: e.target.value})}
+                  rows={3}
                   className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Gender</label>
+                <select
+                  value={editForm.gender}
+                  onChange={(e) => setEditForm({...editForm, gender: e.target.value as 'male' | 'female'})}
+                  className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
+                >
+                  <option value="male">Male</option>
+                  <option value="female">Female</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Profile Picture</label>
+                <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-xl bg-gray-50 hover:bg-gray-100 transition-colors">
+                  <div className="space-y-1 text-center">
+                    <Upload className="mx-auto h-12 w-12 text-gray-400" />
+                    <div className="flex text-sm text-gray-600 justify-center">
+                      <label
+                        htmlFor="avatar-upload"
+                        className="relative cursor-pointer bg-transparent rounded-md font-medium text-indigo-600 hover:text-indigo-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-indigo-500"
+                      >
+                        <span>Upload a file</span>
+                        <input 
+                          id="avatar-upload" 
+                          name="avatar-upload" 
+                          type="file" 
+                          className="sr-only" 
+                          accept="image/*"
+                          onChange={(e) => {
+                            if (e.target.files && e.target.files[0]) {
+                              setAvatarFile(e.target.files[0]);
+                            }
+                          }}
+                        />
+                      </label>
+                    </div>
+                    <p className="text-xs text-gray-500">PNG, JPG up to 5MB</p>
+                    {avatarFile && (
+                      <p className="text-sm font-medium text-emerald-600 mt-2">
+                        Selected: {avatarFile.name}
+                      </p>
+                    )}
+                  </div>
+                </div>
               </div>
 
               <div>

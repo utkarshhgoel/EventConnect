@@ -1,5 +1,5 @@
 import { useAuth } from '@/store/useAuth';
-import { Settings, Edit3, ShieldCheck, ShieldAlert, Star, Briefcase, Mail, Phone, MapPin, GraduationCap, Ruler, Calendar, ArrowLeft, X, Upload, Clock } from 'lucide-react';
+import { Settings, Edit3, ShieldCheck, ShieldAlert, Star, Briefcase, Mail, Phone, MapPin, GraduationCap, Ruler, Calendar, ArrowLeft, X, Upload, Clock, CheckCircle } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { GoogleGenAI } from '@google/genai';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -23,10 +23,28 @@ export default function Profile() {
   
   const [profileUser, setProfileUser] = useState<any>(null);
   const [reviews, setReviews] = useState<any[]>([]);
+  const [completedEvents, setCompletedEvents] = useState<any[]>([]);
   const [loading, setLoading] = useState(!!profileId);
   
   const [bio, setBio] = useState('Experienced event staff with a background in hospitality. Quick learner and great team player.');
   const [isEnhancing, setIsEnhancing] = useState(false);
+
+  // Edit Profile State
+  const [isEditing, setIsEditing] = useState(false);
+  const [editForm, setEditForm] = useState({
+    name: '',
+    phone: '',
+    location: '',
+    avatar_url: '',
+    bio: '',
+    gender: 'male' as 'male' | 'female',
+    roles: '',
+    age: '',
+    height: '',
+    education: ''
+  });
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [saving, setSaving] = useState(false);
 
   // Verification State
   const [isVerifying, setIsVerifying] = useState(false);
@@ -38,16 +56,85 @@ export default function Profile() {
 
   const isOwnProfile = !profileId || profileId === user?.id;
 
+  const getParsedSubtitle = (subtitleStr: string | undefined) => {
+    if (!subtitleStr) return { roles: 'Event Staff • Runner • Usher', age: '24 Years Old', height: '5\'8" (173cm)', education: 'B.A. Hospitality' };
+    try {
+      const parsed = JSON.parse(subtitleStr);
+      return {
+        roles: parsed.roles || 'Event Staff • Runner • Usher',
+        age: parsed.age || '24 Years Old',
+        height: parsed.height || '5\'8" (173cm)',
+        education: parsed.education || 'B.A. Hospitality'
+      };
+    } catch (e) {
+      return { roles: subtitleStr, age: '24 Years Old', height: '5\'8" (173cm)', education: 'B.A. Hospitality' };
+    }
+  };
+
   useEffect(() => {
     if (profileId) {
-      fetchProfile();
-    } else {
+      fetchProfile(profileId);
+    } else if (user) {
       setProfileUser(user);
       setVerifyForm({
         phone: user?.phone || ''
       });
+      
+      const parsedDetails = getParsedSubtitle(user?.subtitle);
+      
+      setEditForm({
+        name: user?.name || '',
+        phone: user?.phone || '',
+        location: user?.location || '',
+        avatar_url: user?.avatar_url || '',
+        bio: user?.bio || '',
+        gender: user?.gender || 'male',
+        roles: parsedDetails.roles,
+        age: parsedDetails.age,
+        height: parsedDetails.height,
+        education: parsedDetails.education
+      });
+      if (user?.bio) setBio(user.bio);
+      fetchReviews(user.id);
     }
   }, [profileId, user]);
+
+  const fetchReviews = async (id: string) => {
+    try {
+      const { data: reviewsData, error: reviewsError } = await supabase
+        .from('reviews')
+        .select('*, event:events(name)')
+        .eq('candidate_id', id)
+        .order('created_at', { ascending: false });
+
+      if (reviewsError) {
+        console.error('Error fetching reviews:', reviewsError);
+      } else {
+        setReviews(reviewsData || []);
+      }
+
+      // Fetch completed events (accepted applications for closed events)
+      const { data: eventsData, error: eventsError } = await supabase
+        .from('applications')
+        .select('*, event:events(*)')
+        .eq('candidate_id', id)
+        .eq('status', 'accepted');
+
+      if (eventsError) {
+        console.error('Error fetching completed events:', eventsError);
+      } else {
+        const closedEvents = (eventsData || [])
+          .filter(app => app.event && app.event.status === 'closed')
+          .map(app => app.event);
+        setCompletedEvents(closedEvents);
+      }
+
+    } catch (error) {
+      console.error('Error fetching data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Auto-cleanup ID proof once verified
   useEffect(() => {
@@ -75,32 +162,20 @@ export default function Profile() {
     cleanupIdProof();
   }, [user?.verification_status, user?.id_proof_url, user?.id, isOwnProfile, checkUser]);
 
-  const fetchProfile = async () => {
+  const fetchProfile = async (id: string) => {
     try {
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
-        .eq('id', profileId)
+        .eq('id', id)
         .single();
         
       if (error) throw error;
       setProfileUser(data);
 
-      // Fetch reviews
-      const { data: reviewsData, error: reviewsError } = await supabase
-        .from('reviews')
-        .select('*, event:events(title)')
-        .eq('candidate_id', profileId)
-        .order('created_at', { ascending: false });
-
-      if (reviewsError) {
-        console.error('Error fetching reviews:', reviewsError);
-      } else {
-        setReviews(reviewsData || []);
-      }
+      await fetchReviews(id);
     } catch (error) {
       console.error('Error fetching profile:', error);
-    } finally {
       setLoading(false);
     }
   };
@@ -121,11 +196,110 @@ export default function Profile() {
       
       if (response.text) {
         setBio(response.text);
+        // Save the enhanced bio immediately
+        if (user) {
+          await supabase.from('profiles').update({ bio: response.text }).eq('id', user.id);
+          checkUser();
+        }
       }
     } catch (error) {
       console.error("Error enhancing bio:", error);
     } finally {
       setIsEnhancing(false);
+    }
+  };
+
+  const handleSaveProfile = async () => {
+    if (!user) return;
+    setSaving(true);
+    try {
+      let avatarUrl = editForm.avatar_url;
+
+      if (avatarFile) {
+        // Compress image
+        let fileToUpload = avatarFile;
+        try {
+          const options = {
+            maxSizeMB: 0.5,
+            maxWidthOrHeight: 800,
+            useWebWorker: true
+          };
+          fileToUpload = await imageCompression(avatarFile, options);
+        } catch (error) {
+          console.error('Error compressing image:', error);
+        }
+
+        const fileExt = fileToUpload.name.split('.').pop() || 'jpg';
+        const fileName = `${user.id}-${Math.random()}.${fileExt}`;
+        const filePath = `avatars/${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('avatars')
+          .upload(filePath, fileToUpload);
+
+        if (uploadError) {
+          console.error('Upload error details:', uploadError);
+          throw uploadError;
+        }
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('avatars')
+          .getPublicUrl(filePath);
+
+        avatarUrl = publicUrl;
+      }
+
+      const newSubtitle = JSON.stringify({
+        roles: editForm.roles,
+        age: editForm.age,
+        height: editForm.height,
+        education: editForm.education,
+        gender: editForm.gender
+      });
+
+      let { error } = await supabase
+        .from('profiles')
+        .update({
+          name: editForm.name,
+          phone: editForm.phone,
+          location: editForm.location,
+          avatar_url: avatarUrl,
+          bio: editForm.bio,
+          gender: editForm.gender,
+          subtitle: newSubtitle
+        })
+        .eq('id', user.id);
+
+      // Fallback if gender column doesn't exist in DB yet
+      if (error && error.message?.includes('Could not find the \'gender\' column')) {
+        const { error: retryError } = await supabase
+          .from('profiles')
+          .update({
+            name: editForm.name,
+            phone: editForm.phone,
+            location: editForm.location,
+            avatar_url: avatarUrl,
+            bio: editForm.bio,
+            subtitle: newSubtitle
+          })
+          .eq('id', user.id);
+        error = retryError;
+      }
+
+      if (error) {
+        console.error('Update error:', error);
+        throw error;
+      }
+      
+      setBio(editForm.bio);
+      await checkUser(); // Refresh user data
+      setIsEditing(false);
+      setAvatarFile(null);
+    } catch (error: any) {
+      console.error('Error updating profile:', error);
+      alert(`Failed to update profile: ${error.message || 'Unknown error'}`);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -207,7 +381,10 @@ export default function Profile() {
           </button>
         )}
         {isOwnProfile && (
-          <button className="absolute top-4 right-4 p-2 bg-white/20 backdrop-blur-md rounded-full text-white hover:bg-white/30 transition">
+          <button 
+            onClick={() => setIsEditing(true)}
+            className="absolute top-4 right-4 p-2 bg-white/20 backdrop-blur-md rounded-full text-white hover:bg-white/30 transition"
+          >
             <Settings className="w-5 h-5" />
           </button>
         )}
@@ -224,7 +401,10 @@ export default function Profile() {
                 className="w-24 h-24 rounded-2xl border-4 border-white shadow-sm object-cover bg-gray-100"
               />
               {isOwnProfile && (
-                <button className="absolute -bottom-2 -right-2 p-1.5 bg-emerald-600 text-white rounded-lg shadow-md hover:bg-emerald-700">
+                <button 
+                  onClick={() => setIsEditing(true)}
+                  className="absolute -bottom-2 -right-2 p-1.5 bg-emerald-600 text-white rounded-lg shadow-md hover:bg-emerald-700"
+                >
                   <Edit3 className="w-4 h-4" />
                 </button>
               )}
@@ -251,7 +431,7 @@ export default function Profile() {
 
           <div className="mt-4">
             <h1 className="text-2xl font-bold text-gray-900">{profileUser?.name || 'Candidate'}</h1>
-            <p className="text-gray-500 text-sm mt-1">Event Staff • Runner • Usher</p>
+            <p className="text-gray-500 text-sm mt-1">{getParsedSubtitle(profileUser?.subtitle).roles}</p>
           </div>
 
           <div className="flex items-center space-x-4 mt-4 pt-4 border-t border-gray-100">
@@ -266,13 +446,27 @@ export default function Profile() {
             </div>
             <div className="w-px h-10 bg-gray-200"></div>
             <div className="flex flex-col">
-              <span className="text-2xl font-bold text-gray-900">{reviews.length}</span>
+              <span className="text-2xl font-bold text-gray-900">{completedEvents.length}</span>
               <div className="flex items-center text-xs text-gray-500 mt-0.5">
                 <Briefcase className="w-3 h-3 text-emerald-400 mr-1" />
                 Events Worked
               </div>
             </div>
           </div>
+
+          {completedEvents.length > 0 && (
+            <div className="mt-4 pt-4 border-t border-gray-100">
+              <h4 className="text-sm font-semibold text-gray-900 mb-2">Completed Events</h4>
+              <ul className="space-y-2">
+                {completedEvents.map((event, idx) => (
+                  <li key={idx} className="text-sm text-gray-600 flex items-center">
+                    <CheckCircle className="w-4 h-4 text-emerald-500 mr-2 shrink-0" />
+                    <span className="truncate">{event.name || 'Unknown Event'}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       </div>
 
@@ -325,15 +519,15 @@ export default function Profile() {
           <div className="grid grid-cols-2 gap-4">
             <div className="flex items-center text-sm text-gray-600">
               <Calendar className="w-4 h-4 mr-3 text-gray-400" />
-              24 Years Old
+              {getParsedSubtitle(profileUser?.subtitle).age}
             </div>
             <div className="flex items-center text-sm text-gray-600">
               <Ruler className="w-4 h-4 mr-3 text-gray-400" />
-              5'8" (173cm)
+              {getParsedSubtitle(profileUser?.subtitle).height}
             </div>
             <div className="flex items-center text-sm text-gray-600">
               <GraduationCap className="w-4 h-4 mr-3 text-gray-400" />
-              B.A. Hospitality
+              {getParsedSubtitle(profileUser?.subtitle).education}
             </div>
           </div>
         </div>
@@ -346,11 +540,11 @@ export default function Profile() {
           </div>
           <div className="flex items-center text-sm text-gray-600">
             <Phone className="w-4 h-4 mr-3 text-gray-400" />
-            {profileUser?.phone || '+1 (555) 987-6543'}
+            {profileUser?.phone || 'Not provided'}
           </div>
           <div className="flex items-center text-sm text-gray-600">
             <MapPin className="w-4 h-4 mr-3 text-gray-400" />
-            {profileUser?.location || 'San Francisco, CA'}
+            {profileUser?.location || 'Not provided'}
           </div>
         </div>
 
@@ -364,7 +558,7 @@ export default function Profile() {
               {reviews.map((review, idx) => (
                 <div key={idx} className="border-b border-gray-100 last:border-0 pb-4 last:pb-0">
                   <div className="flex justify-between items-start mb-2">
-                    <h4 className="font-medium text-gray-900">{review.event?.title || 'Unknown Event'}</h4>
+                    <h4 className="font-medium text-gray-900">{review.event?.name || 'Unknown Event'}</h4>
                     <div className="flex items-center bg-amber-50 px-2 py-1 rounded-md">
                       <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500 mr-1" />
                       <span className="text-xs font-bold text-amber-700">{review.rating}.0</span>
@@ -398,6 +592,171 @@ export default function Profile() {
           </button>
         )}
       </div>
+
+      {/* Edit Profile Modal */}
+      {isEditing && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-xl flex flex-col max-h-[90vh]">
+            <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-white sticky top-0 z-10">
+              <h3 className="text-lg font-bold text-gray-900">Edit Profile</h3>
+              <button 
+                onClick={() => setIsEditing(false)}
+                className="p-2 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-4 overflow-y-auto flex-1 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                <input 
+                  type="text" 
+                  value={editForm.name}
+                  onChange={(e) => setEditForm({...editForm, name: e.target.value})}
+                  className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Roles / Subtitle</label>
+                <input 
+                  type="text" 
+                  value={editForm.roles}
+                  onChange={(e) => setEditForm({...editForm, roles: e.target.value})}
+                  placeholder="e.g. Event Staff • Runner • Usher"
+                  className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Bio</label>
+                <textarea 
+                  value={editForm.bio}
+                  onChange={(e) => setEditForm({...editForm, bio: e.target.value})}
+                  rows={3}
+                  className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Gender</label>
+                <select
+                  value={editForm.gender}
+                  onChange={(e) => setEditForm({...editForm, gender: e.target.value as 'male' | 'female'})}
+                  className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all"
+                >
+                  <option value="male">Male</option>
+                  <option value="female">Female</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Profile Picture</label>
+                <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-xl bg-gray-50 hover:bg-gray-100 transition-colors">
+                  <div className="space-y-1 text-center">
+                    <Upload className="mx-auto h-12 w-12 text-gray-400" />
+                    <div className="flex text-sm text-gray-600 justify-center">
+                      <label
+                        htmlFor="avatar-upload"
+                        className="relative cursor-pointer bg-transparent rounded-md font-medium text-emerald-600 hover:text-emerald-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-emerald-500"
+                      >
+                        <span>Upload a file</span>
+                        <input 
+                          id="avatar-upload" 
+                          name="avatar-upload" 
+                          type="file" 
+                          className="sr-only" 
+                          accept="image/*"
+                          onChange={(e) => {
+                            if (e.target.files && e.target.files[0]) {
+                              setAvatarFile(e.target.files[0]);
+                            }
+                          }}
+                        />
+                      </label>
+                    </div>
+                    <p className="text-xs text-gray-500">PNG, JPG up to 5MB</p>
+                    {avatarFile && (
+                      <p className="text-sm font-medium text-emerald-600 mt-2">
+                        Selected: {avatarFile.name}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
+                <input 
+                  type="tel" 
+                  value={editForm.phone}
+                  onChange={(e) => setEditForm({...editForm, phone: e.target.value})}
+                  placeholder="+1 (555) 000-0000"
+                  className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Location</label>
+                <input 
+                  type="text" 
+                  value={editForm.location}
+                  onChange={(e) => setEditForm({...editForm, location: e.target.value})}
+                  placeholder="e.g. San Francisco, CA"
+                  className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all"
+                />
+              </div>
+
+              <div className="pt-2 border-t border-gray-100">
+                <h4 className="text-sm font-semibold text-gray-900 mb-3">Personal Details</h4>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Age</label>
+                    <input 
+                      type="text" 
+                      value={editForm.age}
+                      onChange={(e) => setEditForm({...editForm, age: e.target.value})}
+                      placeholder="e.g. 24 Years Old"
+                      className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Height</label>
+                    <input 
+                      type="text" 
+                      value={editForm.height}
+                      onChange={(e) => setEditForm({...editForm, height: e.target.value})}
+                      placeholder="e.g. 5'8&quot; (173cm)"
+                      className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Education</label>
+                    <input 
+                      type="text" 
+                      value={editForm.education}
+                      onChange={(e) => setEditForm({...editForm, education: e.target.value})}
+                      placeholder="e.g. B.A. Hospitality"
+                      className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-gray-100 bg-white sticky bottom-0">
+              <button 
+                onClick={handleSaveProfile}
+                disabled={saving}
+                className="w-full py-3 bg-emerald-600 text-white rounded-xl font-semibold hover:bg-emerald-700 transition-colors disabled:opacity-70"
+              >
+                {saving ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Verification Modal */}
       {isVerifying && (

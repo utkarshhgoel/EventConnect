@@ -67,7 +67,7 @@ export default function CandidateEventDetails() {
           job_role_id: roleId,
           candidate_id: user.id,
           status: 'pending',
-          gender: 'male' // You might want to get this from user profile
+          gender: user.gender || 'male'
         });
 
       if (error) throw error;
@@ -147,10 +147,15 @@ export default function CandidateEventDetails() {
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Available Roles</h3>
         <div className="space-y-4">
           {(event.roles || []).map(role => {
-            const totalReq = role.req_male + role.req_female;
-            const totalFilled = role.filled_male + role.filled_female;
-            const isRoleFull = totalReq > 0 && totalFilled >= totalReq;
+            const userGender = user?.gender || 'male';
+            const isRoleFull = userGender === 'male' 
+              ? role.req_male > 0 && role.filled_male >= role.req_male
+              : role.req_female > 0 && role.filled_female >= role.req_female;
             const isApplied = appliedRoles.includes(role.id);
+            
+            // Hide role if it doesn't need this gender at all
+            if (userGender === 'male' && role.req_male === 0) return null;
+            if (userGender === 'female' && role.req_female === 0) return null;
             
             return (
               <div key={role.id} className="bg-gray-50 p-4 rounded-xl border border-gray-200 shadow-sm">
@@ -165,7 +170,7 @@ export default function CandidateEventDetails() {
                 <div className="flex items-center justify-between mt-4">
                   <div className="flex items-center text-emerald-600 font-bold text-lg">
                     <IndianRupee className="w-5 h-5 mr-1" />
-                    {role.budget_male} - {role.budget_female} <span className="text-xs text-gray-500 font-normal ml-1">/ shift</span>
+                    {userGender === 'male' ? role.budget_male : role.budget_female} <span className="text-xs text-gray-500 font-normal ml-1">/ shift</span>
                   </div>
                   
                   <button

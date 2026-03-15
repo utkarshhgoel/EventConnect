@@ -34,7 +34,20 @@ export default function Posts() {
         .order('created_at', { ascending: false });
 
       if (eventsError) throw eventsError;
-      setEvents(eventsData || []);
+      
+      let filteredEvents = eventsData || [];
+      const userGender = user?.gender || 'male';
+      filteredEvents = filteredEvents.filter(event => {
+        return (event.roles || []).some((role: any) => {
+          if (userGender === 'male') {
+            return role.req_male > 0 && role.filled_male < role.req_male;
+          } else {
+            return role.req_female > 0 && role.filled_female < role.req_female;
+          }
+        });
+      });
+      
+      setEvents(filteredEvents);
 
       // Fetch user's applications
       if (user) {
@@ -64,7 +77,7 @@ export default function Posts() {
           job_role_id: roleId,
           candidate_id: user.id,
           status: 'pending',
-          gender: 'male' // You might want to get this from user profile
+          gender: user.gender || 'male'
         });
 
       if (error) throw error;
@@ -153,10 +166,15 @@ export default function Posts() {
               <div className="bg-gray-50 p-5 space-y-4">
                 <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">Available Roles</h3>
                 {(event.roles || []).map(role => {
-                  const totalReq = role.req_male + role.req_female;
-                  const totalFilled = role.filled_male + role.filled_female;
-                  const isRoleFull = totalReq > 0 && totalFilled >= totalReq;
+                  const userGender = user?.gender || 'male';
+                  const isRoleFull = userGender === 'male' 
+                    ? role.req_male > 0 && role.filled_male >= role.req_male
+                    : role.req_female > 0 && role.filled_female >= role.req_female;
                   const isApplied = appliedRoles.includes(role.id);
+                  
+                  // Hide role if it doesn't need this gender at all
+                  if (userGender === 'male' && role.req_male === 0) return null;
+                  if (userGender === 'female' && role.req_female === 0) return null;
                   
                   return (
                     <div key={role.id} className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
@@ -171,7 +189,7 @@ export default function Posts() {
                       <div className="flex items-center justify-between mt-4">
                         <div className="flex items-center text-emerald-600 font-semibold">
                           <IndianRupee className="w-4 h-4 mr-1" />
-                          {role.budget_male} - {role.budget_female} <span className="text-xs text-gray-500 font-normal ml-1">/ shift</span>
+                          {userGender === 'male' ? role.budget_male : role.budget_female} <span className="text-xs text-gray-500 font-normal ml-1">/ shift</span>
                         </div>
                         
                         <button

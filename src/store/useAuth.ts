@@ -32,7 +32,27 @@ export const useAuth = create<AuthState>((set) => ({
           .single();
         
         if (profile) {
-          set({ user: profile as Profile, role: profile.role, isLoading: false });
+          const userMeta = data.session.user.user_metadata || {};
+          let parsedSubtitle: any = {};
+          try {
+            if (profile.subtitle) {
+              parsedSubtitle = JSON.parse(profile.subtitle);
+            }
+          } catch (e) {
+            // Not JSON, ignore
+          }
+          
+          const enrichedProfile = {
+            ...profile,
+            ...userMeta,
+            gender: profile.gender || parsedSubtitle.gender,
+            age: parsedSubtitle.age,
+            height: parsedSubtitle.height,
+            education: parsedSubtitle.education,
+            roles: parsedSubtitle.roles || profile.subtitle
+          };
+          
+          set({ user: enrichedProfile as Profile, role: profile.role, isLoading: false });
           return;
         }
       }

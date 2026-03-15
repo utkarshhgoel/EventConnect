@@ -11,6 +11,10 @@ export interface Profile {
   is_verified?: boolean;
   verification_status?: 'unverified' | 'pending' | 'verified';
   id_proof_url?: string;
+  gender?: 'male' | 'female';
+  age?: string;
+  height?: string;
+  education?: string;
 }
 
 export interface JobRole {

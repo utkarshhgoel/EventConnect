@@ -13,6 +13,7 @@ export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
+  const [gender, setGender] = useState<'male' | 'female'>('male');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -38,6 +39,7 @@ export default function Login() {
               email,
               name,
               role,
+              gender: role === 'candidate' ? gender : undefined,
               avatar_url: `https://picsum.photos/seed/${authData.user.id}/200`
             })
             .select()
@@ -72,6 +74,7 @@ export default function Login() {
                 email,
                 name: email.split('@')[0], // Fallback name
                 role, // Use the selected role
+                gender: role === 'candidate' ? 'male' : undefined,
                 avatar_url: `https://picsum.photos/seed/${authData.user.id}/200`
               })
               .select()
@@ -145,6 +148,20 @@ export default function Login() {
                   placeholder="John Doe"
                 />
               </div>
+              
+              {role === 'candidate' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Gender</label>
+                  <select
+                    value={gender}
+                    onChange={(e) => setGender(e.target.value as 'male' | 'female')}
+                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+                  >
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                  </select>
+                </div>
+              )}
             </>
           )}
 
