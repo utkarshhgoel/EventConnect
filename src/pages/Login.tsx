@@ -32,7 +32,7 @@ export default function Login() {
         if (authError) throw authError;
         
         if (authData.user) {
-          const { data: profileData, error: profileError } = await supabase
+          let { data: profileData, error: profileError } = await supabase
             .from('profiles')
             .insert({
               id: authData.user.id,
@@ -44,6 +44,23 @@ export default function Login() {
             })
             .select()
             .single();
+            
+          if (profileError && profileError.message?.includes('Could not find the \'gender\' column')) {
+            const { data: retryData, error: retryError } = await supabase
+              .from('profiles')
+              .insert({
+                id: authData.user.id,
+                email,
+                name,
+                role,
+                subtitle: JSON.stringify({ gender: role === 'candidate' ? gender : undefined }),
+                avatar_url: `https://picsum.photos/seed/${authData.user.id}/200`
+              })
+              .select()
+              .single();
+            profileData = retryData;
+            profileError = retryError;
+          }
             
           if (profileError) throw profileError;
           
@@ -67,7 +84,7 @@ export default function Login() {
             
           if (!profileData) {
             // Profile missing, create it
-            const { data: newProfile, error: insertError } = await supabase
+            let { data: newProfile, error: insertError } = await supabase
               .from('profiles')
               .insert({
                 id: authData.user.id,
@@ -79,6 +96,23 @@ export default function Login() {
               })
               .select()
               .single();
+              
+            if (insertError && insertError.message?.includes('Could not find the \'gender\' column')) {
+              const { data: retryProfile, error: retryError } = await supabase
+                .from('profiles')
+                .insert({
+                  id: authData.user.id,
+                  email,
+                  name: email.split('@')[0],
+                  role,
+                  subtitle: JSON.stringify({ gender: role === 'candidate' ? 'male' : undefined }),
+                  avatar_url: `https://picsum.photos/seed/${authData.user.id}/200`
+                })
+                .select()
+                .single();
+              newProfile = retryProfile;
+              insertError = retryError;
+            }
               
             if (insertError) throw insertError;
             profileData = newProfile;
