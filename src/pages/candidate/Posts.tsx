@@ -36,7 +36,15 @@ export default function Posts() {
       if (eventsError) throw eventsError;
       
       let filteredEvents = eventsData || [];
-      const userGender = user?.gender || 'male';
+      let parsedSubtitle: any = {};
+      if (user?.subtitle) {
+        try {
+          parsedSubtitle = typeof user.subtitle === 'string' ? JSON.parse(user.subtitle) : user.subtitle;
+        } catch (e) {
+          parsedSubtitle = { roles: user.subtitle };
+        }
+      }
+      const userGender = (user?.gender || parsedSubtitle.gender || 'male').toLowerCase();
       filteredEvents = filteredEvents.filter(event => {
         return (event.roles || []).some((role: any) => {
           if (userGender === 'male') {
@@ -70,6 +78,16 @@ export default function Posts() {
     if (!user) return;
     
     try {
+      let parsedSubtitle: any = {};
+      if (user?.subtitle) {
+        try {
+          parsedSubtitle = typeof user.subtitle === 'string' ? JSON.parse(user.subtitle) : user.subtitle;
+        } catch (e) {
+          parsedSubtitle = { roles: user.subtitle };
+        }
+      }
+      const userGender = (user?.gender || parsedSubtitle.gender || 'male').toLowerCase();
+
       const { error } = await supabase
         .from('applications')
         .insert({
@@ -77,7 +95,7 @@ export default function Posts() {
           job_role_id: roleId,
           candidate_id: user.id,
           status: 'pending',
-          gender: user.gender || 'male'
+          gender: userGender
         });
 
       if (error) throw error;
@@ -166,7 +184,15 @@ export default function Posts() {
               <div className="bg-gray-50 p-5 space-y-4">
                 <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">Available Roles</h3>
                 {(event.roles || []).map(role => {
-                  const userGender = user?.gender || 'male';
+                  let parsedSubtitle: any = {};
+                  if (user?.subtitle) {
+                    try {
+                      parsedSubtitle = typeof user.subtitle === 'string' ? JSON.parse(user.subtitle) : user.subtitle;
+                    } catch (e) {
+                      parsedSubtitle = { roles: user.subtitle };
+                    }
+                  }
+                  const userGender = (user?.gender || parsedSubtitle.gender || 'male').toLowerCase();
                   const isRoleFull = userGender === 'male' 
                     ? role.req_male > 0 && role.filled_male >= role.req_male
                     : role.req_female > 0 && role.filled_female >= role.req_female;

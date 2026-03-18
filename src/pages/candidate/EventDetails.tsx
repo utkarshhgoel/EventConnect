@@ -13,6 +13,15 @@ const safeFormatDate = (dateString: string | undefined, formatStr: string) => {
   return isValid(date) ? format(date, formatStr) : 'TBD';
 };
 
+const getParsedSubtitle = (subtitleStr: string | undefined) => {
+  if (!subtitleStr) return {};
+  try {
+    return JSON.parse(subtitleStr);
+  } catch {
+    return { roles: subtitleStr };
+  }
+};
+
 export default function CandidateEventDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -60,6 +69,9 @@ export default function CandidateEventDetails() {
     if (!user || !event) return;
     
     try {
+      const parsedSubtitle = getParsedSubtitle(user.subtitle);
+      const userGender = (user.gender || parsedSubtitle.gender || 'male').toLowerCase();
+
       const { error } = await supabase
         .from('applications')
         .insert({
@@ -67,7 +79,7 @@ export default function CandidateEventDetails() {
           job_role_id: roleId,
           candidate_id: user.id,
           status: 'pending',
-          gender: user.gender || 'male'
+          gender: userGender
         });
 
       if (error) throw error;
@@ -147,7 +159,8 @@ export default function CandidateEventDetails() {
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Available Roles</h3>
         <div className="space-y-4">
           {(event.roles || []).map(role => {
-            const userGender = user?.gender || 'male';
+            const parsedSubtitle = getParsedSubtitle(user?.subtitle);
+            const userGender = (user?.gender || parsedSubtitle.gender || 'male').toLowerCase();
             const isRoleFull = userGender === 'male' 
               ? role.req_male > 0 && role.filled_male >= role.req_male
               : role.req_female > 0 && role.filled_female >= role.req_female;

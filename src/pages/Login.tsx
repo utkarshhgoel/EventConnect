@@ -16,113 +16,114 @@ export default function Login() {
   const [gender, setGender] = useState<'male' | 'female'>('male');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
+    setSuccessMessage('');
 
     try {
+      let authData, authError;
+      let isNewUser = false;
+      
       if (isSignUp) {
-        const { data: authData, error: authError } = await supabase.auth.signUp({
+        const res = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: {
+              name,
+              role,
+              gender: role === 'candidate' ? gender : undefined
+            },
+            emailRedirectTo: window.location.origin
+          }
+        });
+        authData = res.data;
+        authError = res.error;
+        
+        if (authError && authError.message.includes('User already registered')) {
+          // Automatically sign in if the user is already registered
+          const signInRes = await supabase.auth.signInWithPassword({
+            email,
+            password,
+          });
+          authData = signInRes.data;
+          authError = signInRes.error;
+        } else if (!authError && authData.user && !authData.session) {
+          // Email confirmation required
+          setSuccessMessage('Successfully signed up! Please check your email to verify your account before logging in.');
+          setIsSignUp(false); // Switch to login view
+          setLoading(false);
+          return;
+        } else {
+          isNewUser = true;
+        }
+      } else {
+        const res = await supabase.auth.signInWithPassword({
           email,
           password,
         });
-        
-        if (authError) throw authError;
-        
-        if (authData.user) {
-          let { data: profileData, error: profileError } = await supabase
+        authData = res.data;
+        authError = res.error;
+      }
+      
+      if (authError) throw authError;
+      
+      if (authData?.user) {
+        let { data: profileData, error: profileError } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', authData.user.id)
+          .maybeSingle();
+          
+        if (!profileData) {
+          // Profile missing, create it
+          const userMeta = authData.user.user_metadata || {};
+          const userRole = userMeta.role || role;
+          const userName = userMeta.name || (isSignUp ? name : email.split('@')[0]);
+          const userGender = (userMeta.gender || (role === 'candidate' ? gender : undefined))?.toLowerCase();
+
+          let { data: newProfile, error: insertError } = await supabase
             .from('profiles')
             .insert({
               id: authData.user.id,
               email,
-              name,
-              role,
-              gender: role === 'candidate' ? gender : undefined,
+              name: userName,
+              role: userRole,
+              gender: userGender,
               avatar_url: `https://picsum.photos/seed/${authData.user.id}/200`
             })
             .select()
             .single();
             
-          if (profileError && profileError.message?.includes('Could not find the \'gender\' column')) {
-            const { data: retryData, error: retryError } = await supabase
+          if (insertError && insertError.message?.includes('Could not find the \'gender\' column')) {
+            const { data: retryProfile, error: retryError } = await supabase
               .from('profiles')
               .insert({
                 id: authData.user.id,
                 email,
-                name,
-                role,
-                subtitle: JSON.stringify({ gender: role === 'candidate' ? gender : undefined }),
+                name: userName,
+                role: userRole,
+                subtitle: JSON.stringify({ gender: userGender }),
                 avatar_url: `https://picsum.photos/seed/${authData.user.id}/200`
               })
               .select()
               .single();
-            profileData = retryData;
-            profileError = retryError;
+            newProfile = retryProfile;
+            insertError = retryError;
           }
             
-          if (profileError) throw profileError;
-          
-          setUser(profileData);
-          navigate(`/${role}/posts`);
+          if (insertError) throw insertError;
+          profileData = newProfile;
+        } else if (profileError) {
+          throw profileError;
         }
-      } else {
-        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
         
-        if (authError) throw authError;
-        
-        if (authData.user) {
-          let { data: profileData, error: profileError } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', authData.user.id)
-            .maybeSingle();
-            
-          if (!profileData) {
-            // Profile missing, create it
-            let { data: newProfile, error: insertError } = await supabase
-              .from('profiles')
-              .insert({
-                id: authData.user.id,
-                email,
-                name: email.split('@')[0], // Fallback name
-                role, // Use the selected role
-                gender: role === 'candidate' ? 'male' : undefined,
-                avatar_url: `https://picsum.photos/seed/${authData.user.id}/200`
-              })
-              .select()
-              .single();
-              
-            if (insertError && insertError.message?.includes('Could not find the \'gender\' column')) {
-              const { data: retryProfile, error: retryError } = await supabase
-                .from('profiles')
-                .insert({
-                  id: authData.user.id,
-                  email,
-                  name: email.split('@')[0],
-                  role,
-                  subtitle: JSON.stringify({ gender: role === 'candidate' ? 'male' : undefined }),
-                  avatar_url: `https://picsum.photos/seed/${authData.user.id}/200`
-                })
-                .select()
-                .single();
-              newProfile = retryProfile;
-              insertError = retryError;
-            }
-              
-            if (insertError) throw insertError;
-            profileData = newProfile;
-          } else if (profileError) {
-            throw profileError;
-          }
-          
-          setUser(profileData);
-          navigate(`/${profileData.role}/posts`);
-        }
+        setUser(profileData);
+        navigate(`/${profileData.role}/posts`);
       }
     } catch (err: any) {
       setError(err.message || 'An error occurred');
@@ -142,6 +143,12 @@ export default function Login() {
         {error && (
           <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm text-center">
             {error}
+          </div>
+        )}
+
+        {successMessage && (
+          <div className="bg-emerald-50 text-emerald-600 p-3 rounded-lg text-sm text-center">
+            {successMessage}
           </div>
         )}
 

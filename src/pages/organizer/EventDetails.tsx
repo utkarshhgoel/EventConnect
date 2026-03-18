@@ -12,6 +12,26 @@ const safeFormatDate = (dateString: string | undefined, formatStr: string) => {
   return isValid(date) ? format(date, formatStr) : 'TBD';
 };
 
+const getParsedSubtitle = (subtitleStr: string | undefined) => {
+  if (!subtitleStr) return {};
+  try {
+    return JSON.parse(subtitleStr);
+  } catch {
+    return { roles: subtitleStr };
+  }
+};
+
+const getCandidateGender = (app: Application) => {
+  let gender = app.gender;
+  if (app.candidate?.gender) {
+    gender = app.candidate.gender;
+  } else {
+    const parsed = getParsedSubtitle(app.candidate?.subtitle);
+    if (parsed.gender) gender = parsed.gender;
+  }
+  return (gender || 'male').toLowerCase();
+};
+
 export default function EventDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -70,7 +90,7 @@ export default function EventDetails() {
       if (status === 'accepted' && event) {
         const role = event.roles?.find(r => r.id === app.job_role_id);
         if (role) {
-          const isMale = app.gender === 'male';
+          const isMale = getCandidateGender(app) === 'male';
           const updateData = isMale 
             ? { filled_male: role.filled_male + 1 }
             : { filled_female: role.filled_female + 1 };
@@ -300,7 +320,7 @@ export default function EventDetails() {
                     </div>
                     <div>
                       <div className="font-medium text-sm">{app.candidate?.name || 'Candidate'}</div>
-                      <div className="text-xs text-gray-500 capitalize">{app.gender} • {(event.roles || []).find(r => r.id === app.job_role_id)?.title}</div>
+                      <div className="text-xs text-gray-500 capitalize">{getCandidateGender(app)} • {(event.roles || []).find(r => r.id === app.job_role_id)?.title}</div>
                     </div>
                   </div>
                   <div className="flex space-x-2">

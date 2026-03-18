@@ -4,6 +4,26 @@ import { supabase } from '@/lib/supabase';
 import { EventPost, Application } from '@/types';
 import { ArrowLeft, Star, CheckCircle } from 'lucide-react';
 
+const getParsedSubtitle = (subtitleStr: string | undefined) => {
+  if (!subtitleStr) return {};
+  try {
+    return JSON.parse(subtitleStr);
+  } catch {
+    return { roles: subtitleStr };
+  }
+};
+
+const getCandidateGender = (app: Application) => {
+  let gender = app.gender;
+  if (app.candidate?.gender) {
+    gender = app.candidate.gender;
+  } else {
+    const parsed = getParsedSubtitle(app.candidate?.subtitle);
+    if (parsed.gender) gender = parsed.gender;
+  }
+  return (gender || 'male').toLowerCase();
+};
+
 export default function Review() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -146,7 +166,7 @@ export default function Review() {
                   </div>
                   <div>
                     <h3 className="font-bold text-gray-900 text-lg">{app.candidate?.name || 'Candidate'}</h3>
-                    <p className="text-sm text-gray-500 capitalize">{app.gender}</p>
+                    <p className="text-sm text-gray-500 capitalize">{getCandidateGender(app)}</p>
                   </div>
                 </div>
 

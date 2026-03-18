@@ -1,6 +1,6 @@
 import { useAuth } from '@/store/useAuth';
 import { Settings, Edit3, ShieldCheck, ShieldAlert, Star, Briefcase, Mail, Phone, MapPin, GraduationCap, Ruler, Calendar, ArrowLeft, X, Upload, Clock, CheckCircle } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { GoogleGenAI } from '@google/genai';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
@@ -89,7 +89,7 @@ export default function Profile() {
         location: user?.location || '',
         avatar_url: user?.avatar_url || '',
         bio: user?.bio || '',
-        gender: user?.gender || 'male',
+        gender: (user?.gender || parsedDetails.gender || 'male').toLowerCase(),
         roles: parsedDetails.roles,
         age: parsedDetails.age,
         height: parsedDetails.height,
@@ -211,46 +211,31 @@ export default function Profile() {
   };
 
   const [uploadingPhotoIndex, setUploadingPhotoIndex] = useState<number | null>(null);
+  const [photoUrlModal, setPhotoUrlModal] = useState<{isOpen: boolean, index: number | null}>({isOpen: false, index: null});
+  const [photoUrlInput, setPhotoUrlInput] = useState('');
 
-  const handlePhotoUpload = async (index: number, event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file || !user) return;
+  const handlePhotoUrlSubmit = async () => {
+    const index = photoUrlModal.index;
+    const url = photoUrlInput.trim();
+    
+    if (index === null || !url || !user) {
+      setPhotoUrlModal({isOpen: false, index: null});
+      setPhotoUrlInput('');
+      return;
+    }
 
     setUploadingPhotoIndex(index);
+    setPhotoUrlModal({isOpen: false, index: null});
+    setPhotoUrlInput('');
+    
     try {
-      let fileToUpload = file;
-      try {
-        const options = {
-          maxSizeMB: 0.5,
-          maxWidthOrHeight: 1080,
-          useWebWorker: true
-        };
-        fileToUpload = await imageCompression(file, options);
-      } catch (error) {
-        console.error('Error compressing image:', error);
-      }
-
-      const fileExt = fileToUpload.name.split('.').pop() || 'jpg';
-      const fileName = `${user.id}-photo-${index}-${Math.random()}.${fileExt}`;
-      const filePath = `avatars/${fileName}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('avatars')
-        .upload(filePath, fileToUpload);
-
-      if (uploadError) throw uploadError;
-
-      const { data: { publicUrl } } = supabase.storage
-        .from('avatars')
-        .getPublicUrl(filePath);
-
       const parsedDetails = getParsedSubtitle(user.subtitle);
       const currentPhotos = [...(parsedDetails.photos || [])];
       
       while (currentPhotos.length <= index) {
         currentPhotos.push('');
       }
-      currentPhotos[index] = publicUrl;
+      currentPhotos[index] = url;
 
       const newSubtitle = JSON.stringify({
         ...parsedDetails,
@@ -271,8 +256,7 @@ export default function Profile() {
         setProfileUser({ ...user, subtitle: newSubtitle });
       }
     } catch (error: any) {
-      console.error('Error uploading photo:', error);
-      alert(`Failed to upload photo: ${error.message || 'Unknown error'}`);
+      console.error('Error updating photo:', error);
     } finally {
       setUploadingPhotoIndex(null);
     }
@@ -317,40 +301,6 @@ export default function Profile() {
     setSaving(true);
     try {
       let avatarUrl = editForm.avatar_url;
-
-      if (avatarFile) {
-        // Compress image
-        let fileToUpload = avatarFile;
-        try {
-          const options = {
-            maxSizeMB: 0.5,
-            maxWidthOrHeight: 800,
-            useWebWorker: true
-          };
-          fileToUpload = await imageCompression(avatarFile, options);
-        } catch (error) {
-          console.error('Error compressing image:', error);
-        }
-
-        const fileExt = fileToUpload.name.split('.').pop() || 'jpg';
-        const fileName = `${user.id}-${Math.random()}.${fileExt}`;
-        const filePath = `avatars/${fileName}`;
-
-        const { error: uploadError } = await supabase.storage
-          .from('avatars')
-          .upload(filePath, fileToUpload);
-
-        if (uploadError) {
-          console.error('Upload error details:', uploadError);
-          throw uploadError;
-        }
-
-        const { data: { publicUrl } } = supabase.storage
-          .from('avatars')
-          .getPublicUrl(filePath);
-
-        avatarUrl = publicUrl;
-      }
 
       const parsedDetails = getParsedSubtitle(user.subtitle);
       const newSubtitle = JSON.stringify({
@@ -536,7 +486,7 @@ export default function Profile() {
 
           <div className="mt-4">
             <h1 className="text-2xl font-bold text-gray-900">{profileUser?.name || 'Candidate'}</h1>
-            <p className="text-gray-500 text-sm mt-1">{getParsedSubtitle(profileUser?.subtitle).roles}</p>
+            <p className="text-gray-500 text-sm mt-1 capitalize">{profileUser?.gender || getParsedSubtitle(profileUser?.subtitle).gender || 'Not specified'}</p>
           </div>
 
           <div className="flex items-center space-x-4 mt-4 pt-4 border-t border-gray-100">
@@ -675,20 +625,17 @@ export default function Profile() {
                     </>
                   ) : (
                     isOwnProfile ? (
-                      <label className="w-full h-full flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 transition-colors">
+                      <button 
+                        onClick={() => setPhotoUrlModal({isOpen: true, index})}
+                        className="w-full h-full flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 transition-colors"
+                        disabled={uploadingPhotoIndex !== null}
+                      >
                         {uploadingPhotoIndex === index ? (
                           <div className="w-5 h-5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
                         ) : (
                           <Upload className="w-5 h-5 text-gray-400" />
                         )}
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={(e) => handlePhotoUpload(index, e)}
-                          disabled={uploadingPhotoIndex !== null}
-                        />
-                      </label>
+                      </button>
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
                         <span className="text-gray-300 text-xs">Empty</span>
@@ -805,37 +752,20 @@ export default function Profile() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Profile Picture</label>
-                <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-xl bg-gray-50 hover:bg-gray-100 transition-colors">
-                  <div className="space-y-1 text-center">
-                    <Upload className="mx-auto h-12 w-12 text-gray-400" />
-                    <div className="flex text-sm text-gray-600 justify-center">
-                      <label
-                        htmlFor="avatar-upload"
-                        className="relative cursor-pointer bg-transparent rounded-md font-medium text-emerald-600 hover:text-emerald-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-emerald-500"
-                      >
-                        <span>Upload a file</span>
-                        <input 
-                          id="avatar-upload" 
-                          name="avatar-upload" 
-                          type="file" 
-                          className="sr-only" 
-                          accept="image/*"
-                          onChange={(e) => {
-                            if (e.target.files && e.target.files[0]) {
-                              setAvatarFile(e.target.files[0]);
-                            }
-                          }}
-                        />
-                      </label>
-                    </div>
-                    <p className="text-xs text-gray-500">PNG, JPG up to 5MB</p>
-                    {avatarFile && (
-                      <p className="text-sm font-medium text-emerald-600 mt-2">
-                        Selected: {avatarFile.name}
-                      </p>
-                    )}
-                  </div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Profile Picture URL From <strong>Google Drive</strong></label>
+                <div className="flex items-center space-x-4">
+                  <img 
+                    src={editForm.avatar_url || `https://picsum.photos/seed/${user?.id || 'default'}/100`} 
+                    alt="Avatar preview" 
+                    className="w-16 h-16 rounded-full object-cover border border-gray-200"
+                  />
+                  <input 
+                    type="url" 
+                    value={editForm.avatar_url}
+                    onChange={(e) => setEditForm({...editForm, avatar_url: e.target.value})}
+                    placeholder="https://example.com/your-image.jpg"
+                    className="flex-1 px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all"
+                  />
                 </div>
               </div>
 
@@ -992,6 +922,45 @@ export default function Profile() {
                   </>
                 )}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Photo URL Modal */}
+      {photoUrlModal.isOpen && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md p-6">
+            <h2 className="text-xl font-bold text-gray-900 mb-4">Add Photo URL</h2>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Image URL From <strong>Google Drive</strong></label>
+                <input 
+                  type="url" 
+                  value={photoUrlInput}
+                  onChange={(e) => setPhotoUrlInput(e.target.value)}
+                  placeholder="https://example.com/image.jpg"
+                  className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all"
+                  autoFocus
+                />
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button 
+                  onClick={() => {
+                    setPhotoUrlModal({isOpen: false, index: null});
+                    setPhotoUrlInput('');
+                  }}
+                  className="flex-1 px-4 py-2 border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={handlePhotoUrlSubmit}
+                  disabled={!photoUrlInput.trim()}
+                  className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 transition-colors disabled:opacity-50"
+                >
+                  Save Photo
+                </button>
+              </div>
             </div>
           </div>
         </div>
